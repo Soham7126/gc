@@ -653,15 +653,20 @@ export default function AdminPage() {
             <div className="admin-form-row">
               <label className="admin-form-group">
                 <span>Number of Players</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
+                <select
                   value={newBooking.num_players.toString()}
                   onChange={(e) => setNewBooking({ ...newBooking, num_players: parseInt(e.target.value, 10) || 1 })}
                   disabled={isSubmittingBooking}
-                  required
-                />
+                >
+                  <option value="1">1 Player</option>
+                  <option value="2">2 Players</option>
+                  <option value="3">3 Players</option>
+                  <option value="4">4 Players</option>
+                  <option value="4">5 Players</option>
+                  <option value="4">6 Players</option>
+                  <option value="4">7 Players</option>
+                  <option value="4">8 Players</option>
+                </select>
               </label>
 
               <label className="admin-form-group">
