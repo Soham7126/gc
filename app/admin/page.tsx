@@ -88,6 +88,25 @@ const groups: Array<{ title: string; icon: Station['icon']; items: Station[] }> 
 const stationTypeOrder: Array<BookingRecord['station_type']> = ['pc', 'ps', 'rc'];
 const durations: Duration[] = ['1h', '2h', '3h', 'infinity'];
 const times = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`);
+const STATION_SESSIONS_KEY = 'upside-down-admin-station-sessions';
+
+type PersistedStationSession = Pick<StationState, 'customer' | 'date' | 'time' | 'duration' | 'startedAt' | 'endsAt'>;
+
+function loadStationSessions(): Record<string, PersistedStationSession> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(STATION_SESSIONS_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, PersistedStationSession>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function hoursToDuration(hours: number): Duration {
+  if (hours >= 3) return '3h';
+  if (hours >= 2) return '2h';
+  return '1h';
+}
 
 function formatDateValue(date: Date) {
   const year = date.getFullYear();
@@ -166,7 +185,7 @@ function mapBookingRow(row: unknown): BookingRecord {
   const booking = row as BookingRecord;
   return {
     ...booking,
-    duration_hours: booking.duration_hours || 1,
+    duration_hours: Number(booking.duration_hours) || 1,
     status: booking.status || 'confirmed',
   };
 }
@@ -267,7 +286,7 @@ export default function AdminPage() {
   );
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
   const [realtimeState, setRealtimeState] = useState<RealtimeState>('connecting');
-  const [manuallyStartedBookings, setManuallyStartedBookings] = useState<Record<string, number>>({}); // Track booking IDs with manual start time
+  const [hasHydratedSessions, setHasHydratedSessions] = useState(false);
   const [newBooking, setNewBooking] = useState({
     customer_name: '',
     station_type: 'pc' as 'pc' | 'ps' | 'rc',
@@ -287,6 +306,45 @@ export default function AdminPage() {
         .sort((a, b) => getBookingStartMs(a) - getBookingStartMs(b)),
     [bookings, now],
   );
+
+  useEffect(() => {
+    const persistedStationSessions = loadStationSessions();
+
+    if (Object.keys(persistedStationSessions).length > 0) {
+      setStations(
+        Object.fromEntries(
+          stationIds.map((id) => {
+            const saved = persistedStationSessions[id];
+            const initial = getInitialStationState(dateOptions[0].value);
+            if (!saved?.startedAt) return [id, initial];
+            return [id, { ...initial, ...saved, elapsedSeconds: 0 }];
+          }),
+        ),
+      );
+    }
+
+    setHasHydratedSessions(true);
+  }, [dateOptions, stationIds]);
+
+  useEffect(() => {
+    if (!hasHydratedSessions) return;
+    const sessionsToPersist = Object.fromEntries(
+      Object.entries(stations)
+        .filter(([, station]) => station.startedAt !== null)
+        .map(([id, station]) => [
+          id,
+          {
+            customer: station.customer,
+            date: station.date,
+            time: station.time,
+            duration: station.duration,
+            startedAt: station.startedAt,
+            endsAt: station.endsAt,
+          },
+        ]),
+    );
+    localStorage.setItem(STATION_SESSIONS_KEY, JSON.stringify(sessionsToPersist));
+  }, [hasHydratedSessions, stations]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -385,16 +443,18 @@ export default function AdminPage() {
     }));
   }
 
-  function startStation(id: string) {
+  function startStation(id: string, durationHours?: number) {
     setStations((current) => {
       const station = current[id];
-      const durationMs = getDurationMs(station.duration);
+      const duration = durationHours ? hoursToDuration(durationHours) : station.duration;
+      const durationMs = durationHours ? durationHours * 60 * 60 * 1000 : getDurationMs(station.duration);
       const startedAt = Date.now();
 
       return {
         ...current,
         [id]: {
           ...station,
+          duration,
           startedAt,
           endsAt: durationMs ? startedAt + durationMs : null,
           elapsedSeconds: 0,
@@ -413,21 +473,6 @@ export default function AdminPage() {
         elapsedSeconds: 0,
       },
     }));
-  }
-
-  function startBookingSession(bookingId: string) {
-    setManuallyStartedBookings((current) => ({
-      ...current,
-      [bookingId]: Date.now(),
-    }));
-  }
-
-  function stopBookingSession(bookingId: string) {
-    setManuallyStartedBookings((current) => {
-      const updated = { ...current };
-      delete updated[bookingId];
-      return updated;
-    });
   }
 
   async function submitNewBooking(e: React.FormEvent) {
@@ -606,17 +651,8 @@ export default function AdminPage() {
         ) : (
           <div className="admin-bookings-list">
             {upcomingBookings.map((booking) => {
-              const isStarted = manuallyStartedBookings[booking.id];
-              const startTime = isStarted || 0;
-              const endTime = startTime + booking.duration_hours * 60 * 60 * 1000;
-              const remainingSeconds = endTime ? Math.ceil((endTime - now) / 1000) : 0;
-              const elapsedSeconds = isStarted ? Math.floor((now - startTime) / 1000) : 0;
-              const isActive = isStarted && remainingSeconds > 0;
-              const isDone = isStarted && remainingSeconds <= 0;
-              const displayTime = isActive ? formatClock(remainingSeconds) : isStarted && isDone ? '00:00:00' : null;
-
               return (
-                <article className={isActive ? 'admin-booking-row active' : 'admin-booking-row'} key={booking.id}>
+                <article className="admin-booking-row" key={booking.id}>
                   <div className="booking-details">
                     <div>
                       <strong>{booking.customer_name}</strong>
@@ -628,7 +664,7 @@ export default function AdminPage() {
                     </div>
                     <div>
                       <strong>{getDurationLabel(booking.duration_hours)}</strong>
-                      <span>{isActive ? `Running: ${displayTime}` : isDone ? 'Completed' : 'Scheduled'}</span>
+                      <span>Scheduled</span>
                     </div>
                   </div>
                 </article>
@@ -754,7 +790,7 @@ export default function AdminPage() {
 
                   <button
                     className={isRunning ? 'admin-start-button stop' : 'admin-start-button'}
-                    onClick={() => (isRunning ? stopStation(item.id) : startStation(item.id))}
+                    onClick={() => (isRunning ? stopStation(item.id) : startStation(item.id, bookedStation?.duration_hours))}
                     type="button"
                   >
                     <svg viewBox="0 0 24 24" aria-hidden="true">
