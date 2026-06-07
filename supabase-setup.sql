@@ -11,6 +11,7 @@ CREATE TABLE bookings (
   station_name TEXT NOT NULL,
   num_players INTEGER NOT NULL DEFAULT 1,
   duration_hours INTEGER NOT NULL DEFAULT 1,
+  payment_mode TEXT NOT NULL DEFAULT 'cash',
   total_price NUMERIC NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'confirmed',
   -- Stored as bookingAttemptKey:stationType so one customer can book PC + PS together.

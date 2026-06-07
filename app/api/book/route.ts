@@ -28,7 +28,7 @@ function getStationIdempotencyKey(idempotencyKey: string | undefined, stationId:
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, date, time, stations, durationHours = 1, idempotencyKey } = body;
+    const { name, date, time, stations, durationHours = 1, idempotencyKey, paymentMode = 'online' } = body;
 
     // ---------- INPUT VALIDATION ----------
 
@@ -56,6 +56,10 @@ export async function POST(req: NextRequest) {
 
     if (!Number.isInteger(durationHours) || !VALID_DURATIONS.includes(durationHours)) {
       return NextResponse.json({ error: 'Invalid duration' }, { status: 400 });
+    }
+
+    if (paymentMode !== 'online' && paymentMode !== 'cash') {
+      return NextResponse.json({ error: 'Invalid payment mode' }, { status: 400 });
     }
 
     if (getSlotHour(time) + durationHours > 24) {
@@ -143,6 +147,7 @@ export async function POST(req: NextRequest) {
       station_name: STATION_LABELS[stationId],
       num_players: count,
       duration_hours: durationHours,
+      payment_mode: paymentMode,
       total_price: 0,
       status: 'confirmed',
       ...(idempotencyKey ? { idempotency_key: getStationIdempotencyKey(idempotencyKey, stationId) } : {}),

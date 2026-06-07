@@ -31,10 +31,10 @@ export default function Home() {
       <h1 className="hero-title">UPSIDE DOWN<br />GAMING CAFE</h1>
       <p className="hero-subtitle">Level Up Your Experience</p>
       <button
-        onClick={() => router.push('/book')}
+        onClick={() => router.push('/admin')}
         className="book-btn"
       >
-        BOOK NOW
+        ADMIN DASHBOARD
       </button>
     </section>
   );

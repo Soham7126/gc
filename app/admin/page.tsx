@@ -272,6 +272,7 @@ export default function AdminPage() {
     customer_name: '',
     station_type: 'pc' as 'pc' | 'ps' | 'rc',
     num_players: 1,
+    payment_mode: 'online' as 'online' | 'cash',
     booking_date: formatDateValue(new Date()),
     time_slot: getDefaultTime(),
     duration_hours: 1,
@@ -443,6 +444,7 @@ export default function AdminPage() {
           date: newBooking.booking_date,
           time: newBooking.time_slot,
           durationHours: newBooking.duration_hours,
+          paymentMode: newBooking.payment_mode,
           stations: {
             [newBooking.station_type]: newBooking.num_players,
           },
@@ -460,6 +462,7 @@ export default function AdminPage() {
         customer_name: '',
         station_type: 'pc',
         num_players: 1,
+        payment_mode: 'online',
         booking_date: formatDateValue(new Date()),
         time_slot: getDefaultTime(),
         duration_hours: 1,
@@ -475,6 +478,166 @@ export default function AdminPage() {
 
   return (
     <main className="admin-page">
+      <section className="admin-bookings-section" aria-labelledby="bookings-heading">
+        <div className="admin-bookings-heading">
+          <div>
+            <h1 id="bookings-heading" className="admin-section-title">
+              <CalendarIcon />
+              Bookings
+            </h1>
+            <p>{upcomingBookings.length} upcoming or active booking{upcomingBookings.length === 1 ? '' : 's'}</p>
+          </div>
+          <span className={`admin-realtime-status ${realtimeState}`}>
+            {realtimeState === 'connected' ? 'Live' : realtimeState === 'offline' ? 'Offline' : 'Connecting'}
+          </span>
+        </div>
+
+        <div className="admin-add-booking-form">
+          <h2 className="admin-form-title">Add New Booking</h2>
+          <form onSubmit={submitNewBooking} className="admin-booking-form">
+            <div className="admin-form-row">
+              <label className="admin-form-group">
+                <span>Customer Name</span>
+                <input
+                  type="text"
+                  value={newBooking.customer_name}
+                  onChange={(e) => setNewBooking({ ...newBooking, customer_name: e.target.value })}
+                  placeholder="Enter customer name"
+                  disabled={isSubmittingBooking}
+                  required
+                />
+              </label>
+
+              <label className="admin-form-group">
+                <span>Station Type</span>
+                <select
+                  value={newBooking.station_type}
+                  onChange={(e) => setNewBooking({ ...newBooking, station_type: e.target.value as 'pc' | 'ps' | 'rc' })}
+                  disabled={isSubmittingBooking}
+                >
+                  <option value="pc">PC</option>
+                  <option value="ps">PlayStation</option>
+                  <option value="rc">Racing Controller</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="admin-form-row">
+              <label className="admin-form-group">
+                <span>Number of Players</span>
+                <select
+                  value={newBooking.num_players.toString()}
+                  onChange={(e) => setNewBooking({ ...newBooking, num_players: parseInt(e.target.value, 10) || 1 })}
+                  disabled={isSubmittingBooking}
+                >
+                  <option value="1">1 Player</option>
+                  <option value="2">2 Players</option>
+                  <option value="3">3 Players</option>
+                  <option value="4">4 Players</option>
+                  <option value="4">5 Players</option>
+                  <option value="4">6 Players</option>
+                  <option value="4">7 Players</option>
+                  <option value="4">8 Players</option>
+                </select>
+              </label>
+
+              <label className="admin-form-group">
+                <span>Payment Mode</span>
+                <select
+                  value={newBooking.payment_mode}
+                  onChange={(e) => setNewBooking({ ...newBooking, payment_mode: e.target.value as 'online' | 'cash' })}
+                  disabled={isSubmittingBooking}
+                >
+                  <option value="online">Online</option>
+                  <option value="cash">Cash</option>
+                </select>
+              </label>
+
+              <label className="admin-form-group">
+                <span>Date</span>
+                <input
+                  type="date"
+                  value={newBooking.booking_date}
+                  onChange={(e) => setNewBooking({ ...newBooking, booking_date: e.target.value })}
+                  disabled={isSubmittingBooking}
+                  required
+                />
+              </label>
+            </div>
+
+            <div className="admin-form-row">
+              <label className="admin-form-group">
+                <span>Time Slot</span>
+                <select
+                  value={newBooking.time_slot}
+                  onChange={(e) => setNewBooking({ ...newBooking, time_slot: e.target.value })}
+                  disabled={isSubmittingBooking}
+                >
+                  {times.map((time) => (
+                    <option key={time} value={time}>
+                      {time}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="admin-form-group">
+                <span>Duration (hours)</span>
+                <select
+                  value={newBooking.duration_hours.toString()}
+                  onChange={(e) => setNewBooking({ ...newBooking, duration_hours: parseInt(e.target.value, 10) || 1 })}
+                  disabled={isSubmittingBooking}
+                >
+                  <option value="1">1 hour</option>
+                  <option value="2">2 hours</option>
+                  <option value="3">3 hours</option>
+                </select>
+              </label>
+            </div>
+
+            <button type="submit" className="admin-submit-booking-btn" disabled={isSubmittingBooking || !newBooking.customer_name.trim()}>
+              {isSubmittingBooking ? 'Creating...' : 'Create Booking'}
+            </button>
+          </form>
+        </div>
+
+        {upcomingBookings.length === 0 ? (
+          <div className="admin-empty-bookings">No confirmed bookings yet.</div>
+        ) : (
+          <div className="admin-bookings-list">
+            {upcomingBookings.map((booking) => {
+              const isStarted = manuallyStartedBookings[booking.id];
+              const startTime = isStarted || 0;
+              const endTime = startTime + booking.duration_hours * 60 * 60 * 1000;
+              const remainingSeconds = endTime ? Math.ceil((endTime - now) / 1000) : 0;
+              const elapsedSeconds = isStarted ? Math.floor((now - startTime) / 1000) : 0;
+              const isActive = isStarted && remainingSeconds > 0;
+              const isDone = isStarted && remainingSeconds <= 0;
+              const displayTime = isActive ? formatClock(remainingSeconds) : isStarted && isDone ? '00:00:00' : null;
+
+              return (
+                <article className={isActive ? 'admin-booking-row active' : 'admin-booking-row'} key={booking.id}>
+                  <div className="booking-details">
+                    <div>
+                      <strong>{booking.customer_name}</strong>
+                      <span>{booking.station_name} x {booking.num_players}</span>
+                    </div>
+                    <div>
+                      <strong>{formatFriendlyDate(booking.booking_date)}</strong>
+                      <span>{booking.time_slot}</span>
+                    </div>
+                    <div>
+                      <strong>{getDurationLabel(booking.duration_hours)}</strong>
+                      <span>{isActive ? `Running: ${displayTime}` : isDone ? 'Completed' : 'Scheduled'}</span>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       {groups.map((group) => (
         <section className="admin-section" key={group.title} aria-labelledby={`${group.title}-heading`}>
           <h1 id={`${group.title}-heading`} className="admin-section-title">
@@ -606,153 +769,6 @@ export default function AdminPage() {
         </section>
       ))}
 
-      <section className="admin-bookings-section" aria-labelledby="bookings-heading">
-        <div className="admin-bookings-heading">
-          <div>
-            <h1 id="bookings-heading" className="admin-section-title">
-              <CalendarIcon />
-              Bookings
-            </h1>
-            <p>{upcomingBookings.length} upcoming or active booking{upcomingBookings.length === 1 ? '' : 's'}</p>
-          </div>
-          <span className={`admin-realtime-status ${realtimeState}`}>
-            {realtimeState === 'connected' ? 'Live' : realtimeState === 'offline' ? 'Offline' : 'Connecting'}
-          </span>
-        </div>
-
-        <div className="admin-add-booking-form">
-          <h2 className="admin-form-title">Add New Booking</h2>
-          <form onSubmit={submitNewBooking} className="admin-booking-form">
-            <div className="admin-form-row">
-              <label className="admin-form-group">
-                <span>Customer Name</span>
-                <input
-                  type="text"
-                  value={newBooking.customer_name}
-                  onChange={(e) => setNewBooking({ ...newBooking, customer_name: e.target.value })}
-                  placeholder="Enter customer name"
-                  disabled={isSubmittingBooking}
-                  required
-                />
-              </label>
-
-              <label className="admin-form-group">
-                <span>Station Type</span>
-                <select
-                  value={newBooking.station_type}
-                  onChange={(e) => setNewBooking({ ...newBooking, station_type: e.target.value as 'pc' | 'ps' | 'rc' })}
-                  disabled={isSubmittingBooking}
-                >
-                  <option value="pc">PC</option>
-                  <option value="ps">PlayStation</option>
-                  <option value="rc">Racing Controller</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="admin-form-row">
-              <label className="admin-form-group">
-                <span>Number of Players</span>
-                <select
-                  value={newBooking.num_players.toString()}
-                  onChange={(e) => setNewBooking({ ...newBooking, num_players: parseInt(e.target.value, 10) || 1 })}
-                  disabled={isSubmittingBooking}
-                >
-                  <option value="1">1 Player</option>
-                  <option value="2">2 Players</option>
-                  <option value="3">3 Players</option>
-                  <option value="4">4 Players</option>
-                  <option value="4">5 Players</option>
-                  <option value="4">6 Players</option>
-                  <option value="4">7 Players</option>
-                  <option value="4">8 Players</option>
-                </select>
-              </label>
-
-              <label className="admin-form-group">
-                <span>Date</span>
-                <input
-                  type="date"
-                  value={newBooking.booking_date}
-                  onChange={(e) => setNewBooking({ ...newBooking, booking_date: e.target.value })}
-                  disabled={isSubmittingBooking}
-                  required
-                />
-              </label>
-            </div>
-
-            <div className="admin-form-row">
-              <label className="admin-form-group">
-                <span>Time Slot</span>
-                <select
-                  value={newBooking.time_slot}
-                  onChange={(e) => setNewBooking({ ...newBooking, time_slot: e.target.value })}
-                  disabled={isSubmittingBooking}
-                >
-                  {times.map((time) => (
-                    <option key={time} value={time}>
-                      {time}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="admin-form-group">
-                <span>Duration (hours)</span>
-                <select
-                  value={newBooking.duration_hours.toString()}
-                  onChange={(e) => setNewBooking({ ...newBooking, duration_hours: parseInt(e.target.value, 10) || 1 })}
-                  disabled={isSubmittingBooking}
-                >
-                  <option value="1">1 hour</option>
-                  <option value="2">2 hours</option>
-                  <option value="3">3 hours</option>
-                </select>
-              </label>
-            </div>
-
-            <button type="submit" className="admin-submit-booking-btn" disabled={isSubmittingBooking || !newBooking.customer_name.trim()}>
-              {isSubmittingBooking ? 'Creating...' : 'Create Booking'}
-            </button>
-          </form>
-        </div>
-
-        {upcomingBookings.length === 0 ? (
-          <div className="admin-empty-bookings">No confirmed bookings yet.</div>
-        ) : (
-          <div className="admin-bookings-list">
-            {upcomingBookings.map((booking) => {
-              const isStarted = manuallyStartedBookings[booking.id];
-              const startTime = isStarted || 0;
-              const endTime = startTime + booking.duration_hours * 60 * 60 * 1000;
-              const remainingSeconds = endTime ? Math.ceil((endTime - now) / 1000) : 0;
-              const elapsedSeconds = isStarted ? Math.floor((now - startTime) / 1000) : 0;
-              const isActive = isStarted && remainingSeconds > 0;
-              const isDone = isStarted && remainingSeconds <= 0;
-              const displayTime = isActive ? formatClock(remainingSeconds) : isStarted && isDone ? '00:00:00' : null;
-
-              return (
-                <article className={isActive ? 'admin-booking-row active' : 'admin-booking-row'} key={booking.id}>
-                  <div className="booking-details">
-                    <div>
-                      <strong>{booking.customer_name}</strong>
-                      <span>{booking.station_name} x {booking.num_players}</span>
-                    </div>
-                    <div>
-                      <strong>{formatFriendlyDate(booking.booking_date)}</strong>
-                      <span>{booking.time_slot}</span>
-                    </div>
-                    <div>
-                      <strong>{getDurationLabel(booking.duration_hours)}</strong>
-                      <span>{isActive ? `Running: ${displayTime}` : isDone ? 'Completed' : 'Scheduled'}</span>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
     </main>
   );
 }
